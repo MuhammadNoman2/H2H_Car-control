@@ -16,8 +16,11 @@ class ControlScreen extends StatefulWidget {
 }
 
 class _ControlScreenState extends State<ControlScreen> {
+
+
   bool isUsingButtons = true;
   bool isLightOn = false; // Track the state of the light
+  bool isFanOn = false; // Track the state of the light
 
   Offset _circlePosition = Offset.zero; // Position of draggable center circle
   double fanRangeK = 90; // Default fan range for 'K'
@@ -73,9 +76,21 @@ class _ControlScreenState extends State<ControlScreen> {
 
     // Send the appropriate command based on the light state
     if (isLightOn) {
-      _sendCommand("M"); // Turn on light
+      _sendCommand("U"); // Turn on light
     } else {
-      _sendCommand("m"); // Turn off light
+      _sendCommand("u"); // Turn off light
+    }
+  }
+ void _toggleFan() {
+    setState(() {
+      isFanOn = !isFanOn; // Toggle the light state
+    });
+
+    // Send the appropriate command based on the light state
+    if (isFanOn) {
+      _sendCommand("W"); // Turn on light
+    } else {
+      _sendCommand("w"); // Turn off light
     }
   }
 
@@ -143,11 +158,35 @@ class _ControlScreenState extends State<ControlScreen> {
                               onPressed: () => _sendCommand("L"),
                               onReleased: () => _sendCommand("S"),
                             ),
-                            CustomButton(
-                              icon: Icons.stop_circle,
-                              color: Colors.red,
-                              onPressed: () => _sendCommand("S"),
-                              onReleased: () => _sendCommand("S"),
+                            GestureDetector(
+                              onTap: _toggleLight,
+                              child: Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: isLightOn
+                                      ? Colors.yellow
+                                      : Colors.grey, // Yellow for ON, Grey for OFF
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: isLightOn
+                                          ? Colors.yellow.withOpacity(0.6)
+                                          : Colors.black26,
+                                      blurRadius: 10,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  isLightOn
+                                      ? Icons.lightbulb
+                                      : Icons
+                                      .lightbulb_outline, // Icon changes based on state
+                                  color: Colors.white,
+                                  size: 40,
+                                ),
+                              ),
                             ),
                             CustomButton(
                               icon: Icons.arrow_right,
@@ -185,18 +224,18 @@ class _ControlScreenState extends State<ControlScreen> {
               ),
               Center(
                 child: GestureDetector(
-                  onTap: _toggleLight,
+                  onTap: _toggleFan,
                   child: Container(
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      color: isLightOn
+                      color: isFanOn
                           ? Colors.yellow
                           : Colors.grey, // Yellow for ON, Grey for OFF
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: isLightOn
+                          color: isFanOn
                               ? Colors.yellow.withOpacity(0.6)
                               : Colors.black26,
                           blurRadius: 10,
@@ -205,10 +244,9 @@ class _ControlScreenState extends State<ControlScreen> {
                       ],
                     ),
                     child: Icon(
-                      isLightOn
-                          ? Icons.lightbulb
-                          : Icons
-                              .lightbulb_outline, // Icon changes based on state
+                      isFanOn
+                          ? Icons.mode_fan_off
+                          : Icons.mode_fan_off_sharp, // Icon changes based on state
                       color: Colors.white,
                       size: 40,
                     ),

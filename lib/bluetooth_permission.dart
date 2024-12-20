@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class BluetoothPermissionScreen extends StatefulWidget {
   const BluetoothPermissionScreen({super.key});
@@ -33,15 +34,41 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
     });
   }
 
-  // Toggle Bluetooth ON/OFF
-  Future<void> _toggleBluetooth() async {
-    setState(() => isLoading = true);
-    if (isBluetoothEnabled) {
-      await FlutterBluetoothSerial.instance.requestDisable();
-    } else {
-      await FlutterBluetoothSerial.instance.requestEnable();
+  // Request Bluetooth permissions for Android 12 and above
+  Future<bool> _requestBluetoothPermissions() async {
+    if (await Permission.bluetoothScan.isGranted &&
+        await Permission.bluetoothConnect.isGranted &&
+        await Permission.location.isGranted) {
+      return true;
     }
-    await _checkBluetoothState();
+
+    // Request the necessary permissions
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    return statuses[Permission.bluetoothScan]?.isGranted == true &&
+        statuses[Permission.bluetoothConnect]?.isGranted == true &&
+        statuses[Permission.location]?.isGranted == true;
+  }
+
+  // Toggle Bluetooth ON/OFF with permission check
+  Future<void> _toggleBluetooth() async {
+    if (await _requestBluetoothPermissions()) {
+      setState(() => isLoading = true);
+      if (isBluetoothEnabled) {
+        await FlutterBluetoothSerial.instance.requestDisable();
+      } else {
+        await FlutterBluetoothSerial.instance.requestEnable();
+      }
+      await _checkBluetoothState();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Bluetooth permissions are required.')),
+      );
+    }
   }
 
   // Start discovering devices
@@ -88,7 +115,6 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
         'deviceName': device.name,
         'deviceAddress': device.address,
       });
-
     } catch (e) {
       // Navigate back to the home screen and display error
       Navigator.pop(context, null);
@@ -112,13 +138,14 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
         backgroundColor: Colors.green,
         title: Text('Bluetooth Connection'),
       ),
-      body: Container(decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF4C9F50), Color(0xFF81C784)], // Green gradient
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF4C9F50), Color(0xFF81C784)], // Green gradient
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
         ),
-      ),
         child: isLoading
             ? Center(child: CircularProgressIndicator())
             : Column(
@@ -195,13 +222,14 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
                 children: [
                   Text(
                     'Available Devices:',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   ElevatedButton(
                     onPressed: _discoverDevices,
                     child: Text('Search'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF4CFF50)
+                      backgroundColor: Color(0xFF4CFF50),
                     ),
                   ),
                 ],
@@ -225,11 +253,14 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
                   final device = devices[index].device;
                   return Card(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius:
+                      BorderRadius.circular(15),
                     ),
                     child: ListTile(
-                      leading: Icon(Icons.bluetooth,
-                          color: Colors.blue),
+                      leading: Icon(
+                        Icons.bluetooth,
+                        color: Colors.blue,
+                      ),
                       title: Text(
                         device.name ?? 'Unknown Device',
                         style: TextStyle(fontSize: 16),
@@ -237,7 +268,8 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
                       subtitle: Text(device.address),
                       trailing: IconButton(
                         icon: Icon(
-                          connectedDeviceAddress == device.address
+                          connectedDeviceAddress ==
+                              device.address
                               ? Icons.bluetooth_connected
                               : Icons.bluetooth,
                           color: connectedDeviceAddress ==
