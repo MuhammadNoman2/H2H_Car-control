@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 
 class BluetoothPermissionScreen extends StatefulWidget {
+  const BluetoothPermissionScreen({super.key});
+
   @override
   _BluetoothPermissionScreenState createState() =>
       _BluetoothPermissionScreenState();
@@ -10,10 +12,11 @@ class BluetoothPermissionScreen extends StatefulWidget {
 class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
   bool isBluetoothEnabled = false;
   bool isLoading = true;
+  bool isDiscovering = false;
   List<BluetoothDiscoveryResult> devices = [];
   BluetoothConnection? connection;
+  String? connectedDeviceName;
   String? connectedDeviceAddress;
-  bool isDiscovering = false;
 
   @override
   void initState() {
@@ -31,151 +34,229 @@ class _BluetoothPermissionScreenState extends State<BluetoothPermissionScreen> {
   }
 
   // Toggle Bluetooth ON/OFF
-  void _toggleBluetooth() async {
+  Future<void> _toggleBluetooth() async {
+    setState(() => isLoading = true);
     if (isBluetoothEnabled) {
       await FlutterBluetoothSerial.instance.requestDisable();
     } else {
       await FlutterBluetoothSerial.instance.requestEnable();
     }
-    _checkBluetoothState();
+    await _checkBluetoothState();
   }
 
   // Start discovering devices
-  void _discoverDevices() async {
-    if (isDiscovering) return; // Prevent starting discovery multiple times
+  void _discoverDevices() {
+    if (isDiscovering) return;
+
     setState(() {
       isDiscovering = true;
-      devices.clear(); // Clear current device list before starting discovery
+      devices.clear();
     });
 
-    FlutterBluetoothSerial.instance.startDiscovery().listen((BluetoothDiscoveryResult result) {
+    FlutterBluetoothSerial.instance.startDiscovery().listen((result) {
       setState(() {
         devices.add(result);
       });
     }).onDone(() {
-      setState(() {
-        isDiscovering = false;
-      });
-      print('Discovery completed');
+      setState(() => isDiscovering = false);
     });
   }
 
   // Connect to the selected Bluetooth device
   Future<void> _connectToDevice(BluetoothDevice device) async {
     try {
-      // Check if the device is paired (manually through system settings)
       bool isDevicePaired = await _isDevicePaired(device);
 
       if (!isDevicePaired) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please pair the device manually in Bluetooth settings')),
+          SnackBar(content: Text('Please pair the device in system settings')),
         );
         return;
       }
 
-      print('Connecting to ${device.address}...');
-      BluetoothConnection connection = await BluetoothConnection.toAddress(device.address);
+      BluetoothConnection connection =
+      await BluetoothConnection.toAddress(device.address);
       setState(() {
+        connectedDeviceName = device.name;
         connectedDeviceAddress = device.address;
         this.connection = connection;
       });
-      print('Connected to ${device.name ?? device.address}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connected to ${device.name ?? device.address}')),
-      );
 
-      // Optionally listen for data
-      connection.input!.listen((data) {
-        print('Data incoming: ${String.fromCharCodes(data)}');
-      }).onDone(() {
-        print('Disconnected by remote request');
-        setState(() {
-          connectedDeviceAddress = null;
-        });
+      // Navigate back to the home screen with connection data
+      Navigator.pop(context, {
+        'connection': connection,
+        'deviceName': device.name,
+        'deviceAddress': device.address,
       });
+
     } catch (e) {
-      print('Connection failed: $e');
+      // Navigate back to the home screen and display error
+      Navigator.pop(context, null);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to connect to ${device.name ?? device.address}. Make sure the device is paired and available.')),
+        SnackBar(content: Text('Failed to connect to ${device.name}')),
       );
     }
   }
 
-  // Function to check if the device is paired
+  // Check if the device is paired
   Future<bool> _isDevicePaired(BluetoothDevice device) async {
-    List<BluetoothDevice> pairedDevices = await FlutterBluetoothSerial.instance.getBondedDevices();
-    return pairedDevices.any((pairedDevice) => pairedDevice.address == device.address);
+    List<BluetoothDevice> pairedDevices =
+    await FlutterBluetoothSerial.instance.getBondedDevices();
+    return pairedDevices.any((d) => d.address == device.address);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Bluetooth Permissions'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _discoverDevices,
-          ),
-        ],
+        backgroundColor: Colors.green,
+        title: Text('Bluetooth Connection'),
       ),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          ListTile(
-            title: Text('Bluetooth Status: ${isBluetoothEnabled ? "ON" : "OFF"}'),
-            trailing: Switch(
-              value: isBluetoothEnabled,
-              onChanged: (value) {
-                _toggleBluetooth();
-              },
-            ),
-          ),
-          Divider(),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              'Available Devices:',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: _discoverDevices,
-            child: Text('Pair New Devices'),
-          ),
-          SizedBox(height: 10),
-          isDiscovering
-              ? Center(child: CircularProgressIndicator())
-              : Expanded(
-            child: ListView.builder(
-              itemCount: devices.length,
-              itemBuilder: (context, index) {
-                final device = devices[index].device;
-                return ListTile(
-                  title: Text(device.name ?? 'Unknown Device'),
-                  subtitle: Text(device.address),
-                  trailing: connectedDeviceAddress == device.address
-                      ? Icon(Icons.bluetooth_connected, color: Colors.green)
-                      : IconButton(
-                    icon: Icon(Icons.bluetooth),
-                    onPressed: () {
-                      _connectToDevice(device);
-                    },
+      body: Container(decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF4C9F50), Color(0xFF81C784)], // Green gradient
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+        child: isLoading
+            ? Center(child: CircularProgressIndicator())
+            : Column(
+          children: [
+            // Bluetooth status card
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                color: Colors.green[300],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                elevation: 5,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Bluetooth Status:',
+                        style: TextStyle(fontSize: 18),
+                      ),
+                      Switch(
+                        activeColor: Colors.green,
+                        inactiveTrackColor: Colors.grey,
+                        activeTrackColor: Colors.green[100],
+                        value: isBluetoothEnabled,
+                        onChanged: (_) => _toggleBluetooth(),
+                      ),
+                    ],
                   ),
-                );
-              },
+                ),
+              ),
             ),
-          ),
-        ],
+
+            // Connected device information
+            if (connectedDeviceName != null)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  elevation: 5,
+                  child: ListTile(
+                    title: Text(
+                      'Connected to $connectedDeviceName',
+                      style: TextStyle(fontSize: 18),
+                    ),
+                    subtitle: Text('Address: $connectedDeviceAddress'),
+                    trailing: ElevatedButton(
+                      onPressed: () {
+                        connection?.close();
+                        setState(() {
+                          connectedDeviceName = null;
+                          connectedDeviceAddress = null;
+                          connection = null;
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
+                      child: Text('Disconnect'),
+                    ),
+                  ),
+                ),
+              ),
+
+            // Device discovery section
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Available Devices:',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  ElevatedButton(
+                    onPressed: _discoverDevices,
+                    child: Text('Search'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF4CFF50)
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Device list
+            Expanded(
+              child: isDiscovering
+                  ? Center(child: CircularProgressIndicator())
+                  : devices.isEmpty
+                  ? Center(
+                child: Text(
+                  'No devices found',
+                  style: TextStyle(fontSize: 16),
+                ),
+              )
+                  : ListView.builder(
+                itemCount: devices.length,
+                itemBuilder: (context, index) {
+                  final device = devices[index].device;
+                  return Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: ListTile(
+                      leading: Icon(Icons.bluetooth,
+                          color: Colors.blue),
+                      title: Text(
+                        device.name ?? 'Unknown Device',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      subtitle: Text(device.address),
+                      trailing: IconButton(
+                        icon: Icon(
+                          connectedDeviceAddress == device.address
+                              ? Icons.bluetooth_connected
+                              : Icons.bluetooth,
+                          color: connectedDeviceAddress ==
+                              device.address
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
+                        onPressed: () {
+                          _connectToDevice(device);
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    connection?.dispose();
-    super.dispose();
   }
 }
